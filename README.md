@@ -2,8 +2,11 @@
 > **Fintech AI-Powered Financial Fraud Awareness & Scam Risk Analysis**
 > *Developed for UniHack HCMC 2026*
 
----
+🌐 **Live Production App:** Deployable to Vercel via GitHub Import
+📦 **GitHub Repository:** [https://github.com/austjndle/ScamLens-UniHack2026](https://github.com/austjndle/ScamLens-UniHack2026)
+🔺 **Avalanche Fuji Testnet:** Chain ID `43113` (SnowTrace Explorer)
 
+---
 ## 📌 Executive Summary
 
 **ScamLens** is an AI-powered financial safety companion designed to protect Vietnamese citizens, university students, and small merchants from escalating digital payment fraud and social engineering scams.
