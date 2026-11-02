@@ -2,7 +2,7 @@
 > **Fintech AI-Powered Financial Fraud Awareness & Scam Risk Analysis**
 > *Developed for UniHack HCMC 2026*
 
-🌐 **Live Production App:** Deployable to Vercel via GitHub Import
+🌐 **Live Production App:** [https://scam-lens-uni-hack2026.vercel.app](https://scam-lens-uni-hack2026.vercel.app)
 📦 **GitHub Repository:** [https://github.com/austjndle/ScamLens-UniHack2026](https://github.com/austjndle/ScamLens-UniHack2026)
 🔺 **Avalanche Fuji Testnet:** Chain ID `43113` (SnowTrace Explorer)
 
