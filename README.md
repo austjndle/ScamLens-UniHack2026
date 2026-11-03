@@ -118,10 +118,22 @@ npm start
 ## 🌐 Deployment Instructions
 
 ### Vercel (Recommended)
-1. Push the `ScamLens` directory or root repository to GitHub.
-2. In Vercel, set the **Root Directory** to `ScamLens`.
-3. Add the Environment Variable `GEMINI_API_KEY` (and `GEMINI_MODEL=gemini-3.8-flash`).
-4. Deploy! Vercel automatically deploys the Next.js App Router and serverless Route Handlers.
+1. Deploy `ScamReportRegistry` to Avalanche Fuji using a wallet funded with testnet AVAX:
+   ```bash
+   DEPLOYER_PRIVATE_KEY=... npx hardhat run scripts/deploy-fuji.cjs --network fuji
+   ```
+   Never commit or paste the private key into source control or a public chat.
+2. Copy the printed contract address into Vercel Production Environment Variables:
+   `NEXT_PUBLIC_SCAM_REGISTRY_ADDRESS=0x...`
+3. Add `GEMINI_API_KEY` (and `GEMINI_MODEL=gemini-3.8-flash`).
+4. Deploy with the `ScamLens` directory as the Vercel Root Directory.
+
+If you do not want to export a wallet private key, use the local MetaMask deployment helper:
+```bash
+npm run build
+node scripts/deploy-fuji-browser.mjs
+```
+Open `http://127.0.0.1:43113`, click the deploy button, and confirm the deployment in MetaMask. The helper never receives a seed phrase or private key.
 
 ### Docker / VPS
 Build the standalone Next.js image using standard Node 20 LTS base:

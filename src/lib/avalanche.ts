@@ -1,4 +1,4 @@
-import { createPublicClient, http, defineChain, type Address, type Hex } from "viem";
+import { createPublicClient, http, defineChain, isAddress, zeroAddress, type Address, type Hex } from "viem";
 
 // Avalanche Fuji Testnet definition
 export const avalancheFuji = defineChain({
@@ -23,10 +23,15 @@ export const avalancheFuji = defineChain({
   testnet: true,
 });
 
-// Official / Verified Fuji Contract address (or local hardhat address in test mode)
-export const SCAM_REGISTRY_ADDRESS: Address =
-  (process.env.NEXT_PUBLIC_SCAM_REGISTRY_ADDRESS as Address) ||
-  "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+// Set this to the address deployed on Avalanche Fuji. The zero address is a
+// fail-closed sentinel and MUST NOT be used for transactions.
+const configuredRegistryAddress = process.env.NEXT_PUBLIC_SCAM_REGISTRY_ADDRESS;
+const validRegistryAddress =
+  configuredRegistryAddress && isAddress(configuredRegistryAddress)
+    ? (configuredRegistryAddress as Address)
+    : undefined;
+export const SCAM_REGISTRY_CONFIGURED = Boolean(validRegistryAddress);
+export const SCAM_REGISTRY_ADDRESS: Address = validRegistryAddress ?? zeroAddress;
 
 export const SCAM_REGISTRY_ABI = [
   {

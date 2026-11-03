@@ -24,15 +24,62 @@ import {
   avalancheFuji,
   SCAM_REGISTRY_ADDRESS,
   SCAM_REGISTRY_ABI,
+  SCAM_REGISTRY_CONFIGURED,
   getExplorerTxUrl,
+  getPublicFujiClient,
 } from "@/lib/avalanche";
-import { createWalletClient, custom, type Address, type Hex, type EIP1193Provider } from "viem";
+import { createWalletClient, custom, isAddress, type Address, type Hex, type EIP1193Provider } from "viem";
+type InjectedProvider = EIP1193Provider & {
+  isMetaMask?: boolean;
+  providers?: InjectedProvider[];
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+};
 
 interface EthereumWindow {
-  ethereum?: EIP1193Provider & {
-    request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-  };
+  ethereum?: InjectedProvider;
 }
+
+function getInjectedProvider(): InjectedProvider | undefined {
+  const ethereumWindow = window as unknown as EthereumWindow;
+  const ethereum = ethereumWindow.ethereum;
+  return ethereum?.providers?.find((provider) => provider.isMetaMask) ?? ethereum;
+}
+
+async function switchToFuji(provider: InjectedProvider): Promise<void> {
+  try {
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0xa869" }],
+    });
+  } catch (switchError: unknown) {
+    if ((switchError as { code?: number }).code !== 4902) {
+      throw switchError;
+    }
+
+    await provider.request({
+      method: "wallet_addEthereumChain",
+      params: [
+        {
+          chainId: "0xa869",
+          chainName: "Avalanche Fuji Testnet",
+          nativeCurrency: { name: "AVAX", symbol: "AVAX", decimals: 18 },
+          rpcUrls: ["https://api.avax-test.network/ext/bc/C/rpc"],
+          blockExplorerUrls: ["https://testnet.snowtrace.io"],
+        },
+      ],
+    });
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0xa869" }],
+    });
+  }
+
+  const chainId = await provider.request({ method: "eth_chainId" });
+  if (chainId !== "0xa869") {
+    throw new Error("Wallet is not connected to Avalanche Fuji Testnet.");
+  }
+}
+
 
 interface AvalancheSubmissionCardProps {
   language: Language;
@@ -45,68 +92,48 @@ export const AvalancheSubmissionCard: React.FC<AvalancheSubmissionCardProps> = (
 }) => {
   const [walletAddress, setWalletAddress] = useState<Address | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
-   const [isSubmitting, setIsSubmitting] = useState(false);
-   const [txHash, setTxHash] = useState<Hex | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [txHash, setTxHash] = useState<Hex | null>(null);
   const [isSandboxTx, setIsSandboxTx] = useState(false);
-   const [salt, setSalt] = useState<Hex | null>(null);
-   const [commitment, setCommitment] = useState<Hex | null>(null);
-   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-   const [copiedSalt, setCopiedSalt] = useState(false);
+  const [salt, setSalt] = useState<Hex | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [copiedSalt, setCopiedSalt] = useState(false);
 
-  // Connect Core Wallet or MetaMask (with instant Testnet Mock Mode if no extension installed)
   const handleConnectWallet = async () => {
     setErrorMsg(null);
-    const ethWindow = typeof window !== "undefined" ? (window as unknown as EthereumWindow) : undefined;
-    if (!ethWindow?.ethereum) {
-      // Provide helpful guidance + simulated testnet wallet for testing without extension
+    const provider = typeof window === "undefined" ? undefined : getInjectedProvider();
+    if (!provider) {
       const demoAccount = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
       setWalletAddress(demoAccount);
       setErrorMsg(
         language === "vi"
-          ? "ℹ️ Trình duyệt chưa cài Core/MetaMask: Đang kết nối ví thử nghiệm Avalanche (Testnet Sandbox Mode) để bạn trải nghiệm quy trình tạo Salt và hash cam kết."
-          : "ℹ️ No wallet extension detected: Connected to Avalanche Testnet Sandbox Wallet for interactive demonstration."
+          ? "ℹ️ Không tìm thấy Core/MetaMask. Đang dùng Sandbox Mode để xem quy trình demo."
+          : "ℹ️ No Core/MetaMask provider found. Sandbox Mode is enabled for this demo."
       );
       return;
     }
+
     setIsConnecting(true);
     try {
-      const provider = ethWindow.ethereum;
-      const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
-      if (!accounts || accounts.length === 0) {
-        throw new Error("No accounts authorized");
+      const result = await provider.request({ method: "eth_requestAccounts" });
+      if (!Array.isArray(result) || typeof result[0] !== "string" || !isAddress(result[0])) {
+        throw new Error("No authorized wallet account.");
       }
-      const account = accounts[0] as Address;
-      setWalletAddress(account);
 
-      // Switch to Avalanche Fuji (43113)
-      try {
-        await provider.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: "0xa869" }], // 43113 in hex
-        });
-      } catch (switchError: unknown) {
-        const errorRecord = switchError as { code?: number };
-        // If chain not added, add Avalanche Fuji
-        if (errorRecord && errorRecord.code === 4902) {
-          await provider.request({
-            method: "wallet_addEthereumChain",
-            params: [
-              {
-                chainId: "0xa869",
-                chainName: "Avalanche Fuji Testnet",
-                nativeCurrency: { name: "AVAX", symbol: "AVAX", decimals: 18 },
-                rpcUrls: ["https://api.avax-test.network/ext/bc/C/rpc"],
-                blockExplorerUrls: ["https://testnet.snowtrace.io"],
-              },
-            ],
-          });
-        } else {
-          console.warn("Wallet switch notice:", switchError);
-        }
+      await switchToFuji(provider);
+
+      const activeAccounts = await provider.request({ method: "eth_accounts" });
+      if (!Array.isArray(activeAccounts) || typeof activeAccounts[0] !== "string" || !isAddress(activeAccounts[0])) {
+        throw new Error("No authorized wallet account after switching networks.");
       }
-    } catch (err: unknown) {
-      console.error(err);
-      setErrorMsg(err instanceof Error ? err.message : "Failed to connect wallet");
+
+      setWalletAddress(activeAccounts[0]);
+    } catch {
+      setErrorMsg(
+        language === "vi"
+          ? "Không thể kết nối tài khoản MetaMask trên Avalanche Fuji. Hãy cấp quyền cho website và chọn đúng mạng Fuji."
+          : "MetaMask could not authorize this site on Avalanche Fuji. Allow the site and select Fuji Testnet."
+      );
     } finally {
       setIsConnecting(false);
     }
@@ -114,89 +141,115 @@ export const AvalancheSubmissionCard: React.FC<AvalancheSubmissionCardProps> = (
 
   // Submit salted commitment on-chain
   const handleSubmitOnChain = async () => {
-    if (!walletAddress) {
-      await handleConnectWallet();
-      return;
-    }
-
-    const ethWindow = typeof window !== "undefined" ? (window as unknown as EthereumWindow) : undefined;
-
     setErrorMsg(null);
     setIsSubmitting(true);
 
     try {
-      // 1. Generate local secret salt
       const generatedSalt = generateRandomSalt();
       setSalt(generatedSalt);
 
-      // 2. Hash summary + category without storing raw sensitive PII
-      const contentHash = hashSanitizedContent(result.summary + result.scam_category);
-      const computedCommitment = computeReportCommitment(
-        contentHash,
-        generatedSalt,
-        walletAddress
-      );
-      setCommitment(computedCommitment);
-
-      const categoryEnum = mapCategoryToContractEnum(result.scam_category);
-
-       if (!ethWindow?.ethereum) {
-         // Simulated local Fuji confirmation when no browser wallet extension is active
-         const { promise, resolve } = Promise.withResolvers<void>();
-         setTimeout(resolve, 1000);
-         await promise;
-         const mockHash = `0x7a8b9c${Math.random().toString(16).slice(2, 10)}f4e3d2c1b0a9876543210123456789abcdef0123456789abcdef01` as Hex;
+      const provider = typeof window === "undefined" ? undefined : getInjectedProvider();
+      if (!provider) {
+        const demoAccount = walletAddress ?? ("0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address);
+        const contentHash = hashSanitizedContent(result.summary + result.scam_category);
+        const { promise, resolve } = Promise.withResolvers<void>();
+        setTimeout(resolve, 1000);
+        await promise;
+        const mockHash = `0x7a8b9c${Math.random().toString(16).slice(2, 10)}f4e3d2c1b0a9876543210123456789abcdef0123456789abcdef01` as Hex;
         setIsSandboxTx(true);
-         setTxHash(mockHash);
-         return;
-       }
-
-       const provider = ethWindow.ethereum;
-      // Always refresh active authorized accounts from wallet before writing
-      const currentAccounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
-      if (!currentAccounts || currentAccounts.length === 0) {
-        throw new Error(language === "vi" ? "Chưa có tài khoản nào được cấp quyền trong ví MetaMask." : "No accounts authorized in MetaMask.");
+        setTxHash(mockHash);
+        return;
       }
-      const activeAccount = currentAccounts[0] as Address;
-      setWalletAddress(activeAccount);
+      const requestedAccounts = await provider.request({ method: "eth_requestAccounts" });
+      if (
+        !Array.isArray(requestedAccounts) ||
+        typeof requestedAccounts[0] !== "string" ||
+        !isAddress(requestedAccounts[0])
+      ) {
+        throw new Error("No authorized wallet account.");
+      }
+      await switchToFuji(provider);
 
-       const walletClient = createWalletClient({
+      const authorizedAccounts = await provider.request({ method: "eth_accounts" });
+      if (
+        !Array.isArray(authorizedAccounts) ||
+        typeof authorizedAccounts[0] !== "string" ||
+        !isAddress(authorizedAccounts[0])
+      ) {
+        throw new Error("No authorized wallet account after switching networks.");
+      }
+
+      const activeAccount = authorizedAccounts[0];
+      setWalletAddress(activeAccount);
+      const contentHash = hashSanitizedContent(result.summary + result.scam_category);
+      const computedCommitment = computeReportCommitment(contentHash, generatedSalt, activeAccount);
+
+      if (!SCAM_REGISTRY_CONFIGURED) {
+        throw new Error("The ScamReportRegistry address is not configured for production.");
+      }
+
+      const bytecode = await getPublicFujiClient().getBytecode({ address: SCAM_REGISTRY_ADDRESS });
+      if (!bytecode || bytecode === "0x") {
+        throw new Error("The ScamReportRegistry contract is not deployed on Avalanche Fuji.");
+      }
+
+      const walletClient = createWalletClient({
         account: activeAccount,
-         chain: avalancheFuji,
-         transport: custom(provider),
-       });
-      // 3. Submit transaction
+        chain: avalancheFuji,
+        transport: custom(provider),
+      });
       const hash = await walletClient.writeContract({
         address: SCAM_REGISTRY_ADDRESS,
         abi: SCAM_REGISTRY_ABI,
         functionName: "submitReport",
         args: [
           computedCommitment,
-          categoryEnum,
+          mapCategoryToContractEnum(result.scam_category),
           result.risk_score,
           "ipfs://scamlens-redacted-alert",
         ],
       });
+
       setIsSandboxTx(false);
       setTxHash(hash);
-     } catch (err: unknown) {
-       console.error("On-chain submission error:", err);
-      const errMessage = err instanceof Error ? err.message : String(err);
-      let friendlyMsg = errMessage;
-      if (errMessage.includes("User rejected") || errMessage.includes("user rejected")) {
-        friendlyMsg = language === "vi" ? "Bạn đã từ chối ký giao dịch trên MetaMask." : "Transaction signature was rejected in MetaMask.";
-      } else if (errMessage.includes("not been authorized")) {
-        friendlyMsg = language === "vi" ? "Tài khoản ví chưa được kết nối hoặc cấp quyền với trang web. Vui lòng bấm Kết nối ví lại trên MetaMask." : "Account has not been authorized. Please connect your account in MetaMask.";
-      } else if (errMessage.includes("insufficient funds") || errMessage.includes("gas required exceeds allowance")) {
-        friendlyMsg = language === "vi" ? "Ví của bạn chưa có AVAX testnet để trả phí gas. Vui lòng lấy AVAX miễn phí tại faucet.avax.network." : "Insufficient AVAX for gas. Get free Fuji testnet AVAX at faucet.avax.network.";
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message.toLowerCase() : "";
+      if (message.includes("user rejected") || message.includes("rejected")) {
+        setErrorMsg(
+          language === "vi"
+            ? "Bạn đã từ chối ký giao dịch trên MetaMask."
+            : "Transaction signature was rejected in MetaMask."
+        );
+      } else if (message.includes("not been authorized") || message.includes("authorized")) {
+        setErrorMsg(
+          language === "vi"
+            ? "MetaMask chưa cấp quyền cho tài khoản này. Hãy bấm Kết nối ví lại và cho phép website truy cập tài khoản."
+            : "MetaMask has not authorized this account. Reconnect the wallet and allow this website to access it."
+        );
+      } else if (message.includes("insufficient funds") || message.includes("gas")) {
+        setErrorMsg(
+          language === "vi"
+            ? "Ví chưa có đủ AVAX Fuji để trả phí gas."
+            : "The wallet does not have enough Fuji AVAX for gas."
+        );
+      } else if (message.includes("not deployed")) {
+        setErrorMsg(
+          language === "vi"
+            ? "Hợp đồng ScamReportRegistry chưa được deploy trên Avalanche Fuji. Cần deploy contract trước khi ghi nhận báo cáo."
+            : "ScamReportRegistry is not deployed on Avalanche Fuji yet."
+        );
+      } else {
+        setErrorMsg(
+          language === "vi"
+            ? "Không thể gửi giao dịch lên Avalanche Fuji. Hãy kiểm tra mạng và thử lại."
+            : "Could not submit the transaction to Avalanche Fuji. Check the network and try again."
+        );
       }
-       setErrorMsg(
-        friendlyMsg
-       );
     } finally {
       setIsSubmitting(false);
     }
   };
+
 
   const handleCopySalt = () => {
     if (salt) {

@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPublicFujiClient, SCAM_REGISTRY_ADDRESS, SCAM_REGISTRY_ABI } from "@/lib/avalanche";
+import {
+  getPublicFujiClient,
+  SCAM_REGISTRY_ADDRESS,
+  SCAM_REGISTRY_ABI,
+  SCAM_REGISTRY_CONFIGURED,
+} from "@/lib/avalanche";
 
 export const runtime = "nodejs";
 
@@ -20,6 +25,20 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const offset = Number(url.searchParams.get("offset") || "0");
   const limit = Math.min(Number(url.searchParams.get("limit") || "10"), 25);
+
+  if (!SCAM_REGISTRY_CONFIGURED) {
+    return NextResponse.json({
+      success: true,
+      data: {
+        totalReports: 0,
+        reports: [],
+        nextOffset: 0,
+        registryAddress: SCAM_REGISTRY_ADDRESS,
+        chainId: 43113,
+        notice: "ScamReportRegistry is not configured for Avalanche Fuji.",
+      },
+    });
+  }
 
   try {
     const client = getPublicFujiClient();
@@ -64,9 +83,9 @@ export async function GET(req: NextRequest) {
         chainId: 43113,
       },
     });
-  } catch (err: unknown) {
-    // If contract is not yet deployed on Fuji, provide informative fallback message
-    console.warn("Fuji on-chain report read error (Contract may be pending deployment):", err);
+  } catch {
+    // Keep provider details out of the client response and server logs.
+    console.warn("Fuji on-chain report read unavailable.");
     return NextResponse.json({
       success: true,
       data: {
