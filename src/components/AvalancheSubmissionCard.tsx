@@ -151,12 +151,20 @@ export const AvalancheSubmissionCard: React.FC<AvalancheSubmissionCardProps> = (
          return;
        }
 
-      const provider = ethWindow.ethereum;
-      const walletClient = createWalletClient({
-        account: walletAddress,
-        chain: avalancheFuji,
-        transport: custom(provider),
-      });
+       const provider = ethWindow.ethereum;
+      // Always refresh active authorized accounts from wallet before writing
+      const currentAccounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
+      if (!currentAccounts || currentAccounts.length === 0) {
+        throw new Error(language === "vi" ? "Chưa có tài khoản nào được cấp quyền trong ví MetaMask." : "No accounts authorized in MetaMask.");
+      }
+      const activeAccount = currentAccounts[0] as Address;
+      setWalletAddress(activeAccount);
+
+       const walletClient = createWalletClient({
+        account: activeAccount,
+         chain: avalancheFuji,
+         transport: custom(provider),
+       });
       // 3. Submit transaction
       const hash = await walletClient.writeContract({
         address: SCAM_REGISTRY_ADDRESS,
@@ -171,11 +179,20 @@ export const AvalancheSubmissionCard: React.FC<AvalancheSubmissionCardProps> = (
       });
       setIsSandboxTx(false);
       setTxHash(hash);
-    } catch (err: unknown) {
-      console.error("On-chain submission error:", err);
-      setErrorMsg(
-        err instanceof Error ? err.message : "Transaction rejected or network error on Avalanche Fuji."
-      );
+     } catch (err: unknown) {
+       console.error("On-chain submission error:", err);
+      const errMessage = err instanceof Error ? err.message : String(err);
+      let friendlyMsg = errMessage;
+      if (errMessage.includes("User rejected") || errMessage.includes("user rejected")) {
+        friendlyMsg = language === "vi" ? "Bạn đã từ chối ký giao dịch trên MetaMask." : "Transaction signature was rejected in MetaMask.";
+      } else if (errMessage.includes("not been authorized")) {
+        friendlyMsg = language === "vi" ? "Tài khoản ví chưa được kết nối hoặc cấp quyền với trang web. Vui lòng bấm Kết nối ví lại trên MetaMask." : "Account has not been authorized. Please connect your account in MetaMask.";
+      } else if (errMessage.includes("insufficient funds") || errMessage.includes("gas required exceeds allowance")) {
+        friendlyMsg = language === "vi" ? "Ví của bạn chưa có AVAX testnet để trả phí gas. Vui lòng lấy AVAX miễn phí tại faucet.avax.network." : "Insufficient AVAX for gas. Get free Fuji testnet AVAX at faucet.avax.network.";
+      }
+       setErrorMsg(
+        friendlyMsg
+       );
     } finally {
       setIsSubmitting(false);
     }
