@@ -23,13 +23,14 @@ export const avalancheFuji = defineChain({
   testnet: true,
 });
 
-// Set this to the address deployed on Avalanche Fuji. The zero address is a
-// fail-closed sentinel and MUST NOT be used for transactions.
-const configuredRegistryAddress = process.env.NEXT_PUBLIC_SCAM_REGISTRY_ADDRESS;
-const validRegistryAddress =
-  configuredRegistryAddress && isAddress(configuredRegistryAddress)
-    ? (configuredRegistryAddress as Address)
-    : undefined;
+// This verified Fuji deployment is public configuration, not a secret.
+const DEFAULT_FUJI_REGISTRY_ADDRESS =
+  "0x9484845d9d8d5a5bbf7b23b88fcc7e3b6dbc3802" as Address;
+const configuredRegistryAddress =
+  process.env.NEXT_PUBLIC_SCAM_REGISTRY_ADDRESS || DEFAULT_FUJI_REGISTRY_ADDRESS;
+const validRegistryAddress = isAddress(configuredRegistryAddress)
+  ? (configuredRegistryAddress as Address)
+  : undefined;
 export const SCAM_REGISTRY_CONFIGURED = Boolean(validRegistryAddress);
 export const SCAM_REGISTRY_ADDRESS: Address = validRegistryAddress ?? zeroAddress;
 

@@ -5,6 +5,7 @@
 🌐 **Live Production App:** [https://scam-lens-uni-hack2026.vercel.app](https://scam-lens-uni-hack2026.vercel.app)
 📦 **GitHub Repository:** [https://github.com/austjndle/ScamLens-UniHack2026](https://github.com/austjndle/ScamLens-UniHack2026)
 🔺 **Avalanche Fuji Testnet:** Chain ID `43113` (SnowTrace Explorer)
+🔗 **ScamReportRegistry:** `0x9484845d9d8d5a5bbf7b23b88fcc7e3b6dbc3802`
 
 ---
 ## 📌 Executive Summary
