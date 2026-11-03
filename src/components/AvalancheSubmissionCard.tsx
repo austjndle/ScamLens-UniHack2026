@@ -39,10 +39,56 @@ interface EthereumWindow {
   ethereum?: InjectedProvider;
 }
 
-function getInjectedProvider(): InjectedProvider | undefined {
+interface Eip6963ProviderDetail {
+  provider: InjectedProvider;
+  info?: { rdns?: string };
+}
+
+function isEip6963ProviderDetail(value: unknown): value is Eip6963ProviderDetail {
+  if (!value || typeof value !== "object" || !("provider" in value)) {
+    return false;
+  }
+  const provider = value.provider;
+  return typeof provider === "object" && provider !== null && "request" in provider;
+}
+
+async function getInjectedProvider(): Promise<InjectedProvider | undefined> {
   const ethereumWindow = window as unknown as EthereumWindow;
   const ethereum = ethereumWindow.ethereum;
-  return ethereum?.providers?.find((provider) => provider.isMetaMask) ?? ethereum;
+  const knownMetaMaskProvider =
+    ethereum?.providers?.find((provider) => provider.isMetaMask) ??
+    (ethereum?.isMetaMask ? ethereum : undefined);
+  if (knownMetaMaskProvider) {
+    return knownMetaMaskProvider;
+  }
+  if (!ethereum) {
+    return undefined;
+  }
+
+  const { promise, resolve } = Promise.withResolvers<InjectedProvider | undefined>();
+  let settled = false;
+  const finish = (provider: InjectedProvider | undefined) => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    window.removeEventListener("eip6963:announceProvider", onProvider);
+    resolve(provider);
+  };
+  const onProvider = (event: Event) => {
+    const detail = (event as CustomEvent<unknown>).detail;
+    if (
+      isEip6963ProviderDetail(detail) &&
+      (detail.provider.isMetaMask || detail.info?.rdns === "io.metamask")
+    ) {
+      finish(detail.provider);
+    }
+  };
+
+  window.addEventListener("eip6963:announceProvider", onProvider);
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+  window.setTimeout(() => finish(ethereum), 300);
+  return promise;
 }
 
 async function switchToFuji(provider: InjectedProvider): Promise<void> {
@@ -101,7 +147,7 @@ export const AvalancheSubmissionCard: React.FC<AvalancheSubmissionCardProps> = (
 
   const handleConnectWallet = async () => {
     setErrorMsg(null);
-    const provider = typeof window === "undefined" ? undefined : getInjectedProvider();
+    const provider = typeof window === "undefined" ? undefined : await getInjectedProvider();
     if (!provider) {
       const demoAccount = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
       setWalletAddress(demoAccount);
@@ -148,7 +194,7 @@ export const AvalancheSubmissionCard: React.FC<AvalancheSubmissionCardProps> = (
       const generatedSalt = generateRandomSalt();
       setSalt(generatedSalt);
 
-      const provider = typeof window === "undefined" ? undefined : getInjectedProvider();
+      const provider = typeof window === "undefined" ? undefined : await getInjectedProvider();
       if (!provider) {
         const demoAccount = walletAddress ?? ("0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address);
         const contentHash = hashSanitizedContent(result.summary + result.scam_category);
