@@ -45,12 +45,13 @@ export const AvalancheSubmissionCard: React.FC<AvalancheSubmissionCardProps> = (
 }) => {
   const [walletAddress, setWalletAddress] = useState<Address | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [txHash, setTxHash] = useState<Hex | null>(null);
-  const [salt, setSalt] = useState<Hex | null>(null);
-  const [commitment, setCommitment] = useState<Hex | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [copiedSalt, setCopiedSalt] = useState(false);
+   const [isSubmitting, setIsSubmitting] = useState(false);
+   const [txHash, setTxHash] = useState<Hex | null>(null);
+  const [isSandboxTx, setIsSandboxTx] = useState(false);
+   const [salt, setSalt] = useState<Hex | null>(null);
+   const [commitment, setCommitment] = useState<Hex | null>(null);
+   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+   const [copiedSalt, setCopiedSalt] = useState(false);
 
   // Connect Core Wallet or MetaMask (with instant Testnet Mock Mode if no extension installed)
   const handleConnectWallet = async () => {
@@ -139,15 +140,16 @@ export const AvalancheSubmissionCard: React.FC<AvalancheSubmissionCardProps> = (
 
       const categoryEnum = mapCategoryToContractEnum(result.scam_category);
 
-      if (!ethWindow?.ethereum) {
-        // Simulated local Fuji confirmation when no browser wallet extension is active
-        const { promise, resolve } = Promise.withResolvers<void>();
-        setTimeout(resolve, 1000);
-        await promise;
-        const mockHash = `0x7a8b9c${Math.random().toString(16).slice(2, 10)}f4e3d2c1b0a9876543210123456789abcdef0123456789abcdef01` as Hex;
-        setTxHash(mockHash);
-        return;
-      }
+       if (!ethWindow?.ethereum) {
+         // Simulated local Fuji confirmation when no browser wallet extension is active
+         const { promise, resolve } = Promise.withResolvers<void>();
+         setTimeout(resolve, 1000);
+         await promise;
+         const mockHash = `0x7a8b9c${Math.random().toString(16).slice(2, 10)}f4e3d2c1b0a9876543210123456789abcdef0123456789abcdef01` as Hex;
+        setIsSandboxTx(true);
+         setTxHash(mockHash);
+         return;
+       }
 
       const provider = ethWindow.ethereum;
       const walletClient = createWalletClient({
@@ -167,7 +169,7 @@ export const AvalancheSubmissionCard: React.FC<AvalancheSubmissionCardProps> = (
           "ipfs://scamlens-redacted-alert",
         ],
       });
-
+      setIsSandboxTx(false);
       setTxHash(hash);
     } catch (err: unknown) {
       console.error("On-chain submission error:", err);
@@ -252,29 +254,46 @@ export const AvalancheSubmissionCard: React.FC<AvalancheSubmissionCardProps> = (
 
       {/* Success Transaction Banner */}
       {txHash && (
-        <div className="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/40 text-emerald-200 text-xs sm:text-sm space-y-3 mb-6">
-          <div className="flex items-center space-x-2">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-            <span className="font-bold">
-              {language === "vi"
-                ? "Giao dịch đã được ghi nhận trên Avalanche Fuji!"
-                : "Report commitment confirmed on Avalanche Fuji!"}
-            </span>
-          </div>
-
-          <div className="font-mono text-xs break-all bg-black/30 p-2.5 rounded-lg border border-emerald-500/20">
-            <span>TX Hash: </span>
-            <a
-              href={getExplorerTxUrl(txHash)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-cyan-300 hover:underline inline-flex items-center space-x-1"
-            >
-              <span>{txHash}</span>
-              <ExternalLink className="w-3.5 h-3.5 ml-1" />
-            </a>
-          </div>
-
+         <div className="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/40 text-emerald-200 text-xs sm:text-sm space-y-3 mb-6">
+           <div className="flex items-center space-x-2">
+             <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <span className="font-bold flex items-center space-x-2">
+              <span>
+               {language === "vi"
+                 ? "Giao dịch đã được ghi nhận trên Avalanche Fuji!"
+                 : "Report commitment confirmed on Avalanche Fuji!"}
+              </span>
+              {isSandboxTx && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wide">
+                  {language === "vi" ? "Chế độ Thử Nghiệm Sandbox" : "Sandbox Simulation"}
+                </span>
+              )}
+             </span>
+           </div>
+ 
+           <div className="font-mono text-xs break-all bg-black/30 p-2.5 rounded-lg border border-emerald-500/20">
+             <span>TX Hash: </span>
+            {isSandboxTx ? (
+              <span className="text-cyan-300/80 inline-flex items-center space-x-1 cursor-default">
+                <span>{txHash}</span>
+                <span className="ml-1 text-[11px] text-amber-300/90 font-sans italic">
+                  {language === "vi"
+                    ? "(Mô phỏng cục bộ - chưa cài Core/MetaMask nên chưa broadcast lên explorer)"
+                    : "(Local preview - install Core/MetaMask to broadcast to Snowtrace)"}
+                </span>
+              </span>
+            ) : (
+             <a
+               href={getExplorerTxUrl(txHash)}
+               target="_blank"
+               rel="noopener noreferrer"
+               className="text-cyan-300 hover:underline inline-flex items-center space-x-1"
+             >
+               <span>{txHash}</span>
+               <ExternalLink className="w-3.5 h-3.5 ml-1" />
+             </a>
+            )}
+           </div>
           {salt && (
             <div className="flex items-center justify-between bg-black/30 p-2.5 rounded-lg border border-white/5 font-mono text-xs">
               <span className="truncate mr-2">Secret Salt: {salt}</span>
